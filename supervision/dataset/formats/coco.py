@@ -5,6 +5,7 @@ from typing import Dict, List, Tuple
 
 import cv2
 import numpy as np
+import time
 
 from supervision.dataset.utils import (
     approximate_mask_with_polygons,
@@ -150,6 +151,8 @@ def load_coco_annotations(
     images = {}
     annotations = {}
 
+    start_time = time.time()
+
     for coco_image in coco_images:
         image_name, image_width, image_height = (
             coco_image["file_name"],
@@ -172,6 +175,8 @@ def load_coco_annotations(
 
         images[image_name] = image
         annotations[image_name] = annotation
+
+    print("--- %s seconds ---" % (time.time() - start_time))
 
     return classes, images, annotations
 
