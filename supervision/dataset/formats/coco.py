@@ -2,10 +2,10 @@ import os
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
+from tqdm import tqdm
 
 import cv2
 import numpy as np
-import time
 
 from supervision.dataset.utils import (
     approximate_mask_with_polygons,
@@ -151,9 +151,7 @@ def load_coco_annotations(
     images = {}
     annotations = {}
 
-    start_time = time.time()
-
-    for coco_image in coco_images:
+    for coco_image in tqdm(coco_images, desc = "Loading Dataset: "):
         image_name, image_width, image_height = (
             coco_image["file_name"],
             coco_image["width"],
@@ -175,8 +173,6 @@ def load_coco_annotations(
 
         images[image_name] = image
         annotations[image_name] = annotation
-
-    print("--- %s seconds ---" % (time.time() - start_time))
 
     return classes, images, annotations
 
