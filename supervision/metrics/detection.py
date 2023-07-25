@@ -277,13 +277,13 @@ class ConfusionMatrix:
             matches = ConfusionMatrix._drop_extra_matches(matches=matches)
         else:
             matches = np.zeros((0, 3))
-
+        # ground truth bbox index and corresponding predicted bbox index
         matched_true_idx, matched_detection_idx, _ = matches.transpose().astype(
             np.int16
         )
 
-        for i, true_class_value in enumerate(true_classes):
-            j = matched_true_idx == i
+        for i, true_class_value in enumerate(true_classes): # true_classes corresponds to class of each bounding box
+            j = matched_true_idx == i   # matched_true_idx might be jumbled so making sure atleast one match exist for this bounding box and wasn't dropped
             if matches.shape[0] > 0 and sum(j) == 1:
                 result_matrix[
                     true_class_value, detection_classes[matched_detection_idx[j]]
@@ -304,10 +304,11 @@ class ConfusionMatrix:
         only the one with the highest IoU is kept.
         """
         if matches.shape[0] > 0:
-            matches = matches[matches[:, 2].argsort()[::-1]]
-            matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
-            matches = matches[matches[:, 2].argsort()[::-1]]
-            matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
+            matches = matches[matches[:, 2].argsort()[::-1]] # sort acording to confidence all matches
+            matches = matches[np.unique(matches[:, 1], return_index=True)[1]] # get matches with first occurence of each predicted class
+            matches = matches[matches[:, 2].argsort()[::-1]] # sort result according to confidence again
+            matches = matches[np.unique(matches[:, 0], return_index=True)[1]] # get matches with first occurence of each true class.
+            # Doesn't make much sense to me. Single ground can have multiple matches
         return matches
 
     @classmethod
