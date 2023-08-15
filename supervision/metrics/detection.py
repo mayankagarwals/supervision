@@ -25,6 +25,7 @@ class ConfusionMatrix:
     """
 
     matrix: np.ndarray
+    segmentationMatrix: np.ndarray
     classes: List[str]
     conf_threshold: float
     iou_threshold: float
@@ -90,13 +91,20 @@ class ConfusionMatrix:
             target_tensors.append(
                 ConfusionMatrix.detections_to_tensor(target, with_confidence=False)
             )
-        return cls.from_tensors(
+
+
+        result = cls.from_tensors(
             predictions=prediction_tensors,
             targets=target_tensors,
             classes=classes,
             conf_threshold=conf_threshold,
             iou_threshold=iou_threshold,
         )
+
+        return result
+
+
+
 
     @staticmethod
     def detections_to_tensor(
@@ -185,6 +193,9 @@ class ConfusionMatrix:
             ```
         """
         cls._validate_input_tensors(predictions, targets)
+        '''
+        
+        '''
 
         num_classes = len(classes)
         matrix = np.zeros((num_classes + 1, num_classes + 1))
@@ -232,7 +243,7 @@ class ConfusionMatrix:
 
     @staticmethod
     def evaluate_detection_batch(
-        predictions: np.ndarray,
+        predictions: np.ndarray, # shape of (5,6)
         targets: np.ndarray,
         num_classes: int,
         conf_threshold: float,
@@ -251,50 +262,50 @@ class ConfusionMatrix:
         Returns:
             np.ndarray: Confusion matrix based on a single image.
         """
-        result_matrix = np.zeros((num_classes + 1, num_classes + 1))
+        result_matrix = np.zeros((num_classes + 1, num_classes + 1))         # result matrix of shape 81x81
 
         conf_idx = 5
-        confidence = predictions[:, conf_idx]
+        confidence = predictions[:, conf_idx] # shape (5,)
         detection_batch_filtered = predictions[confidence > conf_threshold]
-
+        # all get filtered as all are above confidnence
         class_id_idx = 4
-        true_classes = np.array(targets[:, class_id_idx], dtype=np.int16)
+        true_classes = np.array(targets[:, class_id_idx], dtype=np.int16) # [0 0]
         detection_classes = np.array(
             detection_batch_filtered[:, class_id_idx], dtype=np.int16
-        )
-        true_boxes = targets[:, :class_id_idx]
-        detection_boxes = detection_batch_filtered[:, :class_id_idx]
+        ) # [17 17 0 0 17]
+        true_boxes = targets[:, :class_id_idx] # shape (2,4)
+        detection_boxes = detection_batch_filtered[:, :class_id_idx] # shape (5,4)
 
         iou_batch = box_iou_batch(
             boxes_true=true_boxes, boxes_detection=detection_boxes
-        )
-        matched_idx = np.asarray(iou_batch > iou_threshold).nonzero()
-
-        if matched_idx[0].shape[0]:
+        ) # shape (2, 5)
+        matched_idx = np.asarray(iou_batch > iou_threshold).nonzero() # index in iou batch that pass the threshold are [0,2], [1,3]
+        # matched_index will contain in transposed format because of its definition
+        if matched_idx[0].shape[0]: # if atleast one match exists . nonzero() would have the first element regardless of whether there is a match. That's why the condition
             matches = np.stack(
                 (matched_idx[0], matched_idx[1], iou_batch[matched_idx]), axis=1
-            )
+            )# [[0 2 0.93] [1 3 0.93]]
             matches = ConfusionMatrix._drop_extra_matches(matches=matches)
         else:
             matches = np.zeros((0, 3))
 
         matched_true_idx, matched_detection_idx, _ = matches.transpose().astype(
             np.int16
-        )
+        ) # the true indices in the original targets arryay and similarly for detections. shape (2,) and (2,)
 
-        for i, true_class_value in enumerate(true_classes):
-            j = matched_true_idx == i
-            if matches.shape[0] > 0 and sum(j) == 1:
-                result_matrix[
+        for i, true_class_value in enumerate(true_classes): # iterate over each ground truth box (their classes)
+            j = matched_true_idx == i                     # j is corresponding index in matched_true_idx
+            if matches.shape[0] > 0 and sum(j) == 1:    #if we have seen any matches
+                result_matrix[                                 # we detected this value as what class. increment that by one.
                     true_class_value, detection_classes[matched_detection_idx[j]]
                 ] += 1  # TP
             else:
-                result_matrix[true_class_value, num_classes] += 1  # FN
-
+                result_matrix[true_class_value, num_classes] += 1  # FN # if we didn't map this box to anything. it's a false negative
+       # in previous step we incremented [0 0] and [0 0] in the two steps
         for i, detection_class_value in enumerate(detection_classes):
-            if not any(matched_detection_idx == i):
+            if not any(matched_detection_idx == i):         # for each detection class if there is no corresponding ground truth it's a false positive
                 result_matrix[num_classes, detection_class_value] += 1  # FP
-
+        # note how there is no true negative here. It's a multi class classification problem. There is no negative class.
         return result_matrix
 
     @staticmethod
@@ -304,10 +315,11 @@ class ConfusionMatrix:
         only the one with the highest IoU is kept.
         """
         if matches.shape[0] > 0:
-            matches = matches[matches[:, 2].argsort()[::-1]]
-            matches = matches[np.unique(matches[:, 1], return_index=True)[1]]
-            matches = matches[matches[:, 2].argsort()[::-1]]
-            matches = matches[np.unique(matches[:, 0], return_index=True)[1]]
+            matches = matches[matches[:, 2].argsort()[::-1]] # This sorts the matches array based on the IoU values in descending order. The highest IoU values will be at the top.
+            matches = matches[np.unique(matches[:, 1], return_index=True)[1]] # get the first (highest) unique detection
+            matches = matches[matches[:, 2].argsort()[::-1]] # this would have got shuffled in previous setp
+            matches = matches[np.unique(matches[:, 0], return_index=True)[1]] # get first (highest) unique truth.
+        # so we would have made sure each true box is only mapped to one detection box
         return matches
 
     @classmethod
